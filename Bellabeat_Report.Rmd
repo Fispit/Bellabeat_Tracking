@@ -1,0 +1,146 @@
+---
+title: "Report"
+author: "Salvador del Cos"
+date: '2022-07-18'
+output: html_document
+---
+
+## Objective
+
+In order to better understand their customer base, Bellabeat has asked us to help determine how customers use other similar devices sourced by other companies. In order to see how customers using other similar devices use them we decided to use a public dataset that has data from Fitbit Fitness Trackers (Found here: <https://www.kaggle.com/datasets/arashnic/fitbit>) The data is made out of information from thirty different users with data collected over several days.
+
+## R Setup
+
+This section will install all required packages for the analysis, cleanup and visualization.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+install.packages("skimr")
+install.packages("janitor")
+install.packages("tidyverse")
+install.packages("dplyr")
+
+
+library("skimr")
+library("janitor")
+library("tidyverse")
+library("dplyr")
+```
+
+## Loading Files & Cleaning Data
+
+After looking at the various files in the entire dataset, it was decided that only the daily files would be used for the analysis. During data exploration, it was found that the data does not have any NAN values or missing values on the dataset after a counting the rows before and after using the drop_na() command, names were found to be acceptable for use and thus were not changed. In the case of the dates, merging both the sleep schedule dataset with the daily activities dataset would not cause the proper data to be merged when merging on both ID and date. As a result, the dates were converted to permit for a clean merge. We can see that the daily_activities dataset has a total of 33 users. In addition, two new columns have been added to daily_activity: Total_Active_Minutes tracks all the active time during the day for each entry; and High_Active_Minutes, which tracks moderate to high activity per entry.
+
+```{r}
+daily_activity <- read_csv("data/dailyActivity_merged.csv")
+sleep_day <- read_csv("data/sleepDay_merged.csv")
+
+
+daily_activity[["ActivityDate"]] <- as.POSIXct( daily_activity[["ActivityDate"]], format = "%m/%d/%Y")
+
+daily_activity <- daily_activity %>% mutate(Total_Active_Minutes = VeryActiveMinutes+FairlyActiveMinutes+LightlyActiveMinutes)
+
+daily_activity <- daily_activity %>% mutate(High_Active_Minutes = VeryActiveMinutes+FairlyActiveMinutes)
+
+sleep_day[["SleepDay"]] <- as.POSIXct( sleep_day[["SleepDay"]], format = "%m/%d/%Y")
+
+daily_activity <- rename(daily_activity, obs_date=ActivityDate)
+sleep_day <- rename(sleep_day, obs_date=SleepDay)
+#this was needed because on the example, the merge of the sleep data and daily data was not done properly, it repeated a single sleep data point and thus the merge needed to happen by ID and Date.
+n_distinct(daily_activity$Id)
+```
+
+## Visualizing the Data
+
+Once the date colum has been prepared for the merge, both data frames are merged together on both the ID and the date we obtain a combined data set of the daily user activity as well as their sleep schedule. Upon exploring the columns we see that they include data for both activity time, steps, various distances, calories and sleep schedule.
+
+```{r, echo=FALSE}
+combined_data <- merge(sleep_day, daily_activity, by=c("Id","obs_date"))
+colnames(combined_data)
+```
+
+However, due to the merging, the total amount of users is reduced to 24 from 33 as those are the only ones that have both sleeping data and daily activities.
+
+```{r}
+n_distinct(combined_data$Id)
+
+```
+
+## Exploratory Plots
+
+In order to properly understand the data, a series of visualizations were made to map the relationships of several variables inside the dataset.
+
+To begin with, we wanted to map any relationship between the amount of calories burned during a day and the amount of time slept, it was thought that there would be a relationship between the two but once the data was plotted, there was no strong indicator showing any relationship between burned calories in a day and time slept.
+
+```{r}
+ggplot(data=combined_data, aes(x=Calories, y=TotalMinutesAsleep)) + geom_point()
+
+```
+
+In the same vein, we there was also no observable correlation between active minutes and sleep duration. From the previous two data we can conclude that using active duration as a variable for recommending or predicting sleep duration will be ineffective.
+
+```{r}
+ggplot(data=combined_data, aes(x=TotalMinutesAsleep, y=Total_Active_Minutes)) + geom_point()
+
+```
+
+```{r eval=FALSE, include=FALSE}
+ggplot(data=combined_data, aes(x=High_Active_Minutes, y=TotalMinutesAsleep, color=Calories)) + geom_point()
+
+```
+
+A somewhat weak relationship between sedentary minutes and time slept was found. It suggests that the more sedentary minutes a person has during the day, the less they sleep. This indicates that users with more sedentary minutes have less time asleep than their exercised counterparts, some of which do to an unhealthy level.
+
+```{r}
+ggplot(data=combined_data,aes(x=TotalMinutesAsleep, y=SedentaryMinutes))+ geom_point()+geom_smooth(method='lm',color='red')
+
+```
+
+People that burn more calories using a tracker tend to burn more calories the more distance is travelled, regardless of the amount of total active minutes. While the relationship is not entirely linear, people with more burned calories tend to both travel a lot of distance and exercise a lot of time. Due to the large variety of body weights and fitness levels expected in a dataset like this, the distinction is not very clear.
+
+```{r}
+ggplot(data=combined_data, aes(x=TrackerDistance, y=Total_Active_Minutes,color=Calories))+ylab("Total Active Minutes") + geom_point() + scale_color_gradient(low="green", high="red")
+
+```
+
+It was also found that the amount of higly active minutes had no real correlation with sedentary minutes. While reducing the amount of sedentary minutes is preferable, any further analysis trying to correlate the highly active minutes of a day with the sedentary minutes would be ineffective at providing valuable information to the user.
+
+```{r}
+ggplot(data=combined_data, aes(x=SedentaryMinutes, y=High_Active_Minutes)) + geom_point()
+
+```
+
+As for the value of the sedentary minutes during a day, the highest results are clustered around 750 minutes, which correlates to around, which correlates to 12 and a half hours. This shoes that the majority of users spend most of the day in a sedentary fashion and not moving around too much outside of specified exercise times.
+
+```{r}
+ggplot(data=combined_data, aes(x=SedentaryMinutes)) + geom_histogram()
+
+```
+
+A large amount of data points have people having zero highly active minutes throughout the day and showing a gradual tail up to 150 minutes. This shows, outside of the group that has 0 highly active minutes, that there is a wide variety of exercise habits among users.
+
+```{r}
+ggplot(data=combined_data, aes(x=High_Active_Minutes)) + geom_histogram()
+
+```
+
+Total active minutes, which includes light exercise, show that the gear registers exercise around a mean of around 275 minutes. The inclusion of light exercise shows vastly different picture than the previous plot, this means that lightly active minutes make the bulk of the exercise time.
+
+```{r}
+ggplot(data=combined_data, aes(x=Total_Active_Minutes)) + geom_histogram()
+
+```
+
+In fact, the histogram of lightly active minutes and total active minutes are essentially the same.
+
+```{r}
+ggplot(data=combined_data, aes(x=LightlyActiveMinutes)) + geom_histogram()
+
+```
+
+```{r}
+ggplot(data=combined_data, aes(x=TrackerDistance)) + geom_histogram()
+```
+
+## Summary
+
+Users that have a tracker typically focus on light exercise. Despite the exercise, a good amount of the users have large amounts of sedentary hours despite the general amount of exercise done, leading to the conclusion that the amount of sedentary minutes is unrelated to the amount of active minutes. The amount of calories burnt did not significantly affect the sleep duration, yet the amount of sedentary minutes showed a weak relation, it is probably affected by the positive effect that exercise gives sleep. In essence, Bellabeat would do good to focus on the light exercise demographic in the future when focusing on their products. Tracker users users are a varied group
